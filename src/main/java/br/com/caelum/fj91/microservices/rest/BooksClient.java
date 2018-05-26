@@ -6,6 +6,8 @@ import br.com.caelum.fj91.microservices.models.Product;
 import com.netflix.hystrix.contrib.javanica.annotation.HystrixCommand;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cloud.client.ServiceInstance;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.http.RequestEntity;
@@ -21,14 +23,21 @@ import java.util.stream.Collectors;
 @Service
 public class BooksClient {
 
+    private final DiscoveryClient discovery;
     private RestTemplate rest = new RestTemplate();
-    private String baseURI = "http://localhost:8081/books";
+    private String baseURI = "/books";
+
+    public BooksClient(DiscoveryClient discovery) {
+        this.discovery = discovery;
+    }
 
     @Cacheable("product")
     @HystrixCommand(fallbackMethod = "fallbackById")
     public Product getProductById(Long id) {
 
-        URI uri = URI.create(baseURI+"/"+id);
+        ServiceInstance instance = discovery.getInstances("books").stream().findAny().orElseThrow(() -> new RuntimeException("No instances available!"));
+
+        URI uri = instance.getUri().resolve(baseURI+"/"+id);
 
         RequestEntity<Void> request = RequestEntity.get(uri).accept(MediaType.APPLICATION_JSON).build();
 
@@ -49,8 +58,9 @@ public class BooksClient {
     @Cacheable("products")
     @HystrixCommand(fallbackMethod = "fallbackAll")
     public List<Product> getAllProducts() {
+        ServiceInstance instance = discovery.getInstances("books").stream().findAny().orElseThrow(() -> new RuntimeException("No instances available!"));
 
-        URI uri = URI.create(baseURI);
+        URI uri = instance.getUri().resolve(baseURI);
 
         RequestEntity<Void> request = RequestEntity.get(uri).accept(MediaType.APPLICATION_JSON).build();
 
@@ -65,6 +75,9 @@ public class BooksClient {
 
     @CacheEvict(value = "products", allEntries = true)
     public List<Product> fallbackAll(){
+        System.out.println("\n\n\n\n");
+        System.out.println("FALLBACK");
+        System.out.println("\n\n\n\n");
         return new ArrayList<>();
     }
 }
